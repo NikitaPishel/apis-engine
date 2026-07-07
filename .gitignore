@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+out/
+*.vsix
+
+# Test artifacts
+.vscode-test/
+.nyc_output/
+coverage/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor state (keep shared .vscode/*.json configs, ignore local overrides)
+.vscode/*.log
+.history/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
