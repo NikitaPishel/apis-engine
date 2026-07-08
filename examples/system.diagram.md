@@ -14,9 +14,18 @@
   - Hash incoming password payload
   - Issue JSON Web Token \#200
 
-[E1]
-(A1) {Routes traffic here if prerequisites fail}
+[E1] (A1) {}
+#(A1) {Routes traffic here if prerequisites fail}
 - Global Exception Management
 - Error Escalation Routine
   - Log failure state to persistent telemetry
   - Display visual toast error layout
+
+
+
+[E1] (A1)
+- Global Exception Management
+- Error Escalation Routine
+  - Log failure state to persistent telemetry
+  - Display visual toast error layout
+
