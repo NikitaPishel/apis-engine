@@ -111,8 +111,11 @@ export function getWebviewHtml(webview: vscode.Webview): string {
 			user-select: none;
 		}
 		.node .head {
+			height: 34px;
+			display: flex;
+			align-items: center;
 			background: var(--node-header);
-			padding: 7px 10px;
+			padding: 0 10px;
 			font-size: 12.5px;
 			font-weight: 600;
 			color: var(--text);
@@ -146,6 +149,7 @@ export function getWebviewHtml(webview: vscode.Webview): string {
 			color: var(--teal-dim);
 		}
 		.node.id-only .body { display: none; }
+		.node.id-only .head { border-bottom: none; }
 		.edge-label {
 			fill: var(--text-dim);
 			font-size: 10.5px;
@@ -162,6 +166,21 @@ export function getWebviewHtml(webview: vscode.Webview): string {
 			font-size: 13px;
 			text-align: center;
 			max-width: 360px;
+		}
+		#error {
+			position: absolute;
+			top: 50%; left: 50%;
+			transform: translate(-50%, -50%);
+			color: #f5a3a3;
+			font-size: 13px;
+			text-align: center;
+			max-width: 460px;
+			white-space: pre-wrap;
+			display: none;
+			border: 1px solid #7a3a3a;
+			background: rgba(60, 20, 20, 0.35);
+			border-radius: 8px;
+			padding: 12px 16px;
 		}
 	</style>
 </head>
@@ -182,6 +201,7 @@ export function getWebviewHtml(webview: vscode.Webview): string {
 			<div id="nodes"></div>
 		</div>
 		<div id="empty">Открой текстовый файл со схемой (DSL) и сохрани, чтобы увидеть диаграмму.</div>
+		<div id="error"></div>
 	</div>
 
 	<script nonce="${nonce}">
@@ -191,12 +211,13 @@ export function getWebviewHtml(webview: vscode.Webview): string {
 		const edgesSvg = document.getElementById('edges');
 		const nodesLayer = document.getElementById('nodes');
 		const emptyEl = document.getElementById('empty');
+		const errorEl = document.getElementById('error');
 		const titleEl = document.getElementById('toolbar-title');
 
 		let scale = 1;
 		let panX = 40;
 		let panY = 20;
-		let nodesById = new Map();
+		let blocksByKey = new Map();
 		let currentEdges = [];
 
 		function applyTransform() {
@@ -237,20 +258,20 @@ export function getWebviewHtml(webview: vscode.Webview): string {
 			return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 		}
 
-		function renderNodeContent(node) {
-			const title = node.fields[0] ? node.fields[0].title : node.id;
-			const bodyFields = node.fields.slice(1);
+		function renderBlockContent(block) {
+			const title = block.messages[0] ? block.messages[0].text : block.id;
+			const bodyMessages = block.messages.slice(1);
 			let bodyHtml = '';
-			for (const field of bodyFields) {
-				bodyHtml += '<div class="field-title">' + escapeHtml(field.title) + '</div>';
-				for (const item of field.items) {
-					bodyHtml += '<div class="item">' + escapeHtml(item) + '</div>';
+			for (const message of bodyMessages) {
+				bodyHtml += '<div class="field-title">' + escapeHtml(message.text) + '</div>';
+				for (const comment of message.comments) {
+					bodyHtml += '<div class="item">' + escapeHtml(comment) + '</div>';
 				}
 			}
 			return {
 				title: escapeHtml(title),
 				body: bodyHtml,
-				hasBody: bodyFields.length > 0,
+				hasBody: bodyMessages.length > 0,
 			};
 		}
 
@@ -278,8 +299,8 @@ export function getWebviewHtml(webview: vscode.Webview): string {
 				'<path d="M0,0 L10,5 L0,10 z" fill="var(--teal-dim)" /></marker></defs>';
 
 			for (const edge of currentEdges) {
-				const a = nodesById.get(edge.from);
-				const b = nodesById.get(edge.to);
+				const a = blocksByKey.get(edge.from);
+				const b = blocksByKey.get(edge.to);
 				if (!a || !b) { continue; }
 				const p = edgeAnchors(a, b);
 				const mx = (p.x1 + p.x2) / 2;
@@ -299,7 +320,7 @@ export function getWebviewHtml(webview: vscode.Webview): string {
 			edgesSvg.innerHTML = svg;
 		}
 
-		function makeDraggable(el, node) {
+		function makeDraggable(el, block) {
 			const head = el.querySelector('.head');
 			let dragging = false;
 			let start = { x: 0, y: 0 };
@@ -309,49 +330,49 @@ export function getWebviewHtml(webview: vscode.Webview): string {
 				e.stopPropagation();
 				dragging = true;
 				start = { x: e.clientX, y: e.clientY };
-				origin = { x: node.x, y: node.y };
+				origin = { x: block.x, y: block.y };
 			});
 			window.addEventListener('mousemove', (e) => {
 				if (!dragging) { return; }
 				const dx = (e.clientX - start.x) / scale;
 				const dy = (e.clientY - start.y) / scale;
-				node.x = origin.x + dx;
-				node.y = origin.y + dy;
-				el.style.left = node.x + 'px';
-				el.style.top = node.y + 'px';
+				block.x = origin.x + dx;
+				block.y = origin.y + dy;
+				el.style.left = block.x + 'px';
+				el.style.top = block.y + 'px';
 				redrawEdges();
 			});
 			window.addEventListener('mouseup', () => {
 				if (dragging) {
 					dragging = false;
-					vscode.postMessage({ type: 'move', id: node.id, x: node.x, y: node.y });
+					vscode.postMessage({ type: 'move', id: block.id, index: block.index, x: block.x, y: block.y });
 				}
 			});
 		}
 
 		function render(model) {
 			currentEdges = model.edges;
-			nodesById = new Map();
+			blocksByKey = new Map();
 			nodesLayer.innerHTML = '';
-			emptyEl.style.display = model.nodes.length ? 'none' : 'block';
+			emptyEl.style.display = model.blocks.length ? 'none' : 'block';
 
 			edgesSvg.setAttribute('width', Math.max(model.width, 200));
 			edgesSvg.setAttribute('height', Math.max(model.height, 200));
 			viewport.style.width = Math.max(model.width, 200) + 'px';
 			viewport.style.height = Math.max(model.height, 200) + 'px';
 
-			for (const node of model.nodes) {
-				nodesById.set(node.id, node);
-				const content = renderNodeContent(node);
+			for (const block of model.blocks) {
+				blocksByKey.set(block.key, block);
+				const content = renderBlockContent(block);
 				const el = document.createElement('div');
 				el.className = 'node' + (content.hasBody ? '' : ' id-only');
-				el.style.left = node.x + 'px';
-				el.style.top = node.y + 'px';
-				el.style.width = node.width + 'px';
-				el.style.minHeight = node.height + 'px';
+				el.style.left = block.x + 'px';
+				el.style.top = block.y + 'px';
+				el.style.width = block.width + 'px';
+				el.style.minHeight = block.height + 'px';
 				el.innerHTML = '<div class="head">' + content.title + '</div><div class="body">' + content.body + '</div>';
 				nodesLayer.appendChild(el);
-				makeDraggable(el, node);
+				makeDraggable(el, block);
 			}
 
 			redrawEdges();
@@ -365,9 +386,9 @@ export function getWebviewHtml(webview: vscode.Webview): string {
 		function exportBounds() {
 			let maxX = 0;
 			let maxY = 0;
-			for (const n of nodesById.values()) {
-				maxX = Math.max(maxX, n.x + n.width);
-				maxY = Math.max(maxY, n.y + n.height);
+			for (const b of blocksByKey.values()) {
+				maxX = Math.max(maxX, b.x + b.width);
+				maxY = Math.max(maxY, b.y + b.height);
 			}
 			return { width: maxX + 40, height: maxY + 40 };
 		}
@@ -383,8 +404,8 @@ export function getWebviewHtml(webview: vscode.Webview): string {
 				'<path d="M0,0 L10,5 L0,10 z" fill="#1f9d8c" /></marker></defs>';
 
 			for (const edge of currentEdges) {
-				const a = nodesById.get(edge.from);
-				const b = nodesById.get(edge.to);
+				const a = blocksByKey.get(edge.from);
+				const b = blocksByKey.get(edge.to);
 				if (!a || !b) { continue; }
 				const p = edgeAnchors(a, b);
 				const mx = (p.x1 + p.x2) / 2;
@@ -401,26 +422,26 @@ export function getWebviewHtml(webview: vscode.Webview): string {
 				}
 			}
 
-			for (const node of nodesById.values()) {
-				const title = node.fields[0] ? node.fields[0].title : node.id;
-				const bodyFields = node.fields.slice(1);
+			for (const block of blocksByKey.values()) {
+				const title = block.messages[0] ? block.messages[0].text : block.id;
+				const bodyMessages = block.messages.slice(1);
 
 				svg += '<g>';
-				svg += '<rect x="' + node.x + '" y="' + node.y + '" width="' + node.width + '" height="' + node.height + '" rx="8" fill="#123634" stroke="#1f5854" />';
-				svg += '<path d="M ' + node.x + ' ' + (node.y + 20) + ' L ' + node.x + ' ' + (node.y + 8) +
-					' Q ' + node.x + ' ' + node.y + ' ' + (node.x + 8) + ' ' + node.y +
-					' L ' + (node.x + node.width - 8) + ' ' + node.y +
-					' Q ' + (node.x + node.width) + ' ' + node.y + ' ' + (node.x + node.width) + ' ' + (node.y + 8) +
-					' L ' + (node.x + node.width) + ' ' + (node.y + 20) + ' Z" fill="#17423f" />';
-				svg += '<line x1="' + node.x + '" y1="' + (node.y + 28) + '" x2="' + (node.x + node.width) + '" y2="' + (node.y + 28) + '" stroke="#1f5854" />';
-				svg += '<text x="' + (node.x + 10) + '" y="' + (node.y + 18) + '" font-size="12.5" font-weight="600" fill="#dff7f2">' + escapeHtml(title) + '</text>';
+				svg += '<rect x="' + block.x + '" y="' + block.y + '" width="' + block.width + '" height="' + block.height + '" rx="8" fill="#123634" stroke="#1f5854" />';
+				svg += '<path d="M ' + block.x + ' ' + (block.y + 20) + ' L ' + block.x + ' ' + (block.y + 8) +
+					' Q ' + block.x + ' ' + block.y + ' ' + (block.x + 8) + ' ' + block.y +
+					' L ' + (block.x + block.width - 8) + ' ' + block.y +
+					' Q ' + (block.x + block.width) + ' ' + block.y + ' ' + (block.x + block.width) + ' ' + (block.y + 8) +
+					' L ' + (block.x + block.width) + ' ' + (block.y + 20) + ' Z" fill="#17423f" />';
+				svg += '<line x1="' + block.x + '" y1="' + (block.y + 28) + '" x2="' + (block.x + block.width) + '" y2="' + (block.y + 28) + '" stroke="#1f5854" />';
+				svg += '<text x="' + (block.x + 10) + '" y="' + (block.y + 18) + '" font-size="12.5" font-weight="600" fill="#dff7f2">' + escapeHtml(title) + '</text>';
 
-				let ty = node.y + 28 + 16;
-				for (const field of bodyFields) {
-					svg += '<text x="' + (node.x + 10) + '" y="' + ty + '" font-size="11.5" font-weight="600" fill="#dff7f2">' + escapeHtml(field.title) + '</text>';
+				let ty = block.y + 28 + 16;
+				for (const message of bodyMessages) {
+					svg += '<text x="' + (block.x + 10) + '" y="' + ty + '" font-size="11.5" font-weight="600" fill="#dff7f2">' + escapeHtml(message.text) + '</text>';
 					ty += 18;
-					for (const item of field.items) {
-						svg += '<text x="' + (node.x + 18) + '" y="' + ty + '" font-size="11.5" fill="#8fb8b2">– ' + escapeHtml(item) + '</text>';
+					for (const comment of message.comments) {
+						svg += '<text x="' + (block.x + 18) + '" y="' + ty + '" font-size="11.5" fill="#8fb8b2">– ' + escapeHtml(comment) + '</text>';
 						ty += 18;
 					}
 				}
@@ -463,8 +484,19 @@ export function getWebviewHtml(webview: vscode.Webview): string {
 		window.addEventListener('message', (event) => {
 			const msg = event.data;
 			if (msg.type === 'update') {
-				titleEl.textContent = msg.fileName || 'diagram';
-				render(msg.model);
+				titleEl.textContent = (msg.model && msg.model.title) || msg.fileName || 'diagram';
+				if (msg.error) {
+					errorEl.textContent = msg.error;
+					errorEl.style.display = 'block';
+					emptyEl.style.display = 'none';
+					nodesLayer.innerHTML = '';
+					edgesSvg.innerHTML = '';
+					blocksByKey = new Map();
+					currentEdges = [];
+				} else {
+					errorEl.style.display = 'none';
+					render(msg.model);
+				}
 			}
 		});
 
