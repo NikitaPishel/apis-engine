@@ -26,31 +26,39 @@ export function getWebviewHtml(webview: vscode.Webview): string {
 	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 	<title>Diagram</title>
 	<style>
-		:root {
-			--bg: #0b1615;
-			--bg-dots: #12211f;
-			--panel: #0f201f;
-			--node-bg: #123634;
-			--node-header: #17423f;
-			--border: #1f5854;
-			--teal: #2dd4bf;
-			--teal-dim: #1f9d8c;
-			--text: #dff7f2;
-			--text-dim: #8fb8b2;
-			--empty: #6f9791;
-		}
 		* { box-sizing: border-box; }
 		html, body {
 			margin: 0;
 			padding: 0;
 			width: 100%;
 			height: 100%;
-			background: var(--bg);
-			background-image: radial-gradient(var(--bg-dots) 1px, transparent 1px);
-			background-size: 22px 22px;
-			color: var(--text);
-			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 			overflow: hidden;
+		}
+		/*
+		 * VS Code injects --vscode-* custom properties as an inline style on
+		 * <body>, so our derived palette must live on a body-or-descendant
+		 * selector too — declaring it on :root (html) would see none of them,
+		 * since custom properties only inherit downward from where they're set.
+		 */
+		body {
+			--font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
+			--bg: var(--vscode-editor-background);
+			--panel: var(--vscode-editorWidget-background, var(--vscode-sideBar-background, var(--bg)));
+			--node-bg: var(--vscode-editorWidget-background, var(--vscode-input-background, var(--bg)));
+			--node-header: var(--vscode-editorGroupHeader-tabsBackground, var(--vscode-tab-activeBackground, var(--vscode-titleBar-activeBackground, var(--node-bg))));
+			--border: var(--vscode-panel-border, var(--vscode-widget-border, rgba(128, 128, 128, 0.35)));
+			--accent: var(--vscode-focusBorder, var(--vscode-textLink-foreground, #4daafc));
+			--accent-dim: var(--vscode-textLink-foreground, var(--accent));
+			--text: var(--vscode-editor-foreground, var(--vscode-foreground));
+			--text-dim: var(--vscode-descriptionForeground, var(--text));
+			--empty: var(--text-dim);
+			--error-fg: var(--vscode-inputValidation-errorForeground, var(--vscode-errorForeground, #f48771));
+			--error-bg: var(--vscode-inputValidation-errorBackground, rgba(244, 135, 113, 0.12));
+			--error-border: var(--vscode-inputValidation-errorBorder, var(--error-fg));
+
+			background: var(--bg);
+			color: var(--text);
+			font-family: var(--font-family);
 		}
 		#toolbar {
 			position: fixed;
@@ -60,17 +68,16 @@ export function getWebviewHtml(webview: vscode.Webview): string {
 			align-items: center;
 			gap: 10px;
 			padding: 0 14px;
-			background: rgba(15, 32, 31, 0.9);
+			background: var(--panel);
 			border-bottom: 1px solid var(--border);
-			backdrop-filter: blur(6px);
 			z-index: 10;
 			font-size: 12px;
 			color: var(--text-dim);
 		}
 		#toolbar .dot {
 			width: 7px; height: 7px; border-radius: 50%;
-			background: var(--teal);
-			box-shadow: 0 0 8px var(--teal);
+			background: var(--accent);
+			box-shadow: 0 0 8px var(--accent);
 		}
 		#toolbar .spacer { flex: 1; }
 		#toolbar button {
@@ -82,7 +89,7 @@ export function getWebviewHtml(webview: vscode.Webview): string {
 			font-size: 11px;
 			cursor: pointer;
 		}
-		#toolbar button:hover { color: var(--text); border-color: var(--teal-dim); }
+		#toolbar button:hover { color: var(--text); border-color: var(--accent); }
 		#stage {
 			position: absolute;
 			top: 40px; left: 0; right: 0; bottom: 0;
@@ -106,7 +113,7 @@ export function getWebviewHtml(webview: vscode.Webview): string {
 			background: var(--node-bg);
 			border: 1px solid var(--border);
 			border-radius: 8px;
-			box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+			box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
 			overflow: hidden;
 			user-select: none;
 		}
@@ -146,7 +153,7 @@ export function getWebviewHtml(webview: vscode.Webview): string {
 			content: '–';
 			position: absolute;
 			left: 0;
-			color: var(--teal-dim);
+			color: var(--accent-dim);
 		}
 		.node.id-only .body { display: none; }
 		.node.id-only .head { border-bottom: none; }
@@ -171,14 +178,14 @@ export function getWebviewHtml(webview: vscode.Webview): string {
 			position: absolute;
 			top: 50%; left: 50%;
 			transform: translate(-50%, -50%);
-			color: #f5a3a3;
+			color: var(--error-fg);
 			font-size: 13px;
 			text-align: center;
 			max-width: 460px;
 			white-space: pre-wrap;
 			display: none;
-			border: 1px solid #7a3a3a;
-			background: rgba(60, 20, 20, 0.35);
+			border: 1px solid var(--error-border);
+			background: var(--error-bg);
 			border-radius: 8px;
 			padding: 12px 16px;
 		}
@@ -258,6 +265,11 @@ export function getWebviewHtml(webview: vscode.Webview): string {
 			return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 		}
 
+		function cssVar(name, fallback) {
+			const value = getComputedStyle(document.body).getPropertyValue(name).trim();
+			return value || fallback;
+		}
+
 		function renderBlockContent(block) {
 			const title = block.messages[0] ? block.messages[0].text : block.id;
 			const bodyMessages = block.messages.slice(1);
@@ -296,7 +308,7 @@ export function getWebviewHtml(webview: vscode.Webview): string {
 
 		function redrawEdges() {
 			let svg = '<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">' +
-				'<path d="M0,0 L10,5 L0,10 z" fill="var(--teal-dim)" /></marker></defs>';
+				'<path d="M0,0 L10,5 L0,10 z" fill="var(--accent-dim)" /></marker></defs>';
 
 			for (const edge of currentEdges) {
 				const a = blocksByKey.get(edge.from);
@@ -307,7 +319,7 @@ export function getWebviewHtml(webview: vscode.Webview): string {
 				const c1x = p.x1 + (mx - p.x1) * 0.6;
 				const c2x = p.x2 - (p.x2 - mx) * 0.6;
 				const path = 'M ' + p.x1 + ' ' + p.y1 + ' C ' + c1x + ' ' + p.y1 + ', ' + c2x + ' ' + p.y2 + ', ' + p.x2 + ' ' + p.y2;
-				svg += '<path d="' + path + '" fill="none" stroke="var(--teal-dim)" stroke-width="1.6" marker-end="url(#arrow)" opacity="0.85" />';
+				svg += '<path d="' + path + '" fill="none" stroke="var(--accent-dim)" stroke-width="1.6" marker-end="url(#arrow)" opacity="0.85" />';
 
 				if (edge.label) {
 					const lx = (p.x1 + p.x2) / 2;
@@ -381,7 +393,8 @@ export function getWebviewHtml(webview: vscode.Webview): string {
 		// ---- Export (SVG / PNG) ----
 		// Builds a self-contained SVG (plain rect/text, no foreignObject) from the
 		// *current* live node positions (including manual drags), so exports always
-		// match what's on screen.
+		// match what's on screen — including the active VS Code theme's colors,
+		// resolved to concrete values since the exported file has no CSS variables.
 
 		function exportBounds() {
 			let maxX = 0;
@@ -398,10 +411,20 @@ export function getWebviewHtml(webview: vscode.Webview): string {
 			const W = Math.max(bounds.width, 200);
 			const H = Math.max(bounds.height, 200);
 
-			let svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + W + ' ' + H + '" width="' + W + '" height="' + H + '" font-family="Segoe UI, Helvetica, Arial, sans-serif">';
-			svg += '<rect x="0" y="0" width="' + W + '" height="' + H + '" fill="#0b1615" />';
+			const fontFamily = cssVar('--font-family', 'Segoe UI, Helvetica, Arial, sans-serif');
+			const bg = cssVar('--bg', '#1e1e1e');
+			const panel = cssVar('--panel', '#252526');
+			const nodeBg = cssVar('--node-bg', '#252526');
+			const nodeHeader = cssVar('--node-header', '#2d2d30');
+			const border = cssVar('--border', '#454545');
+			const text = cssVar('--text', '#cccccc');
+			const textDim = cssVar('--text-dim', '#9d9d9d');
+			const accentDim = cssVar('--accent-dim', '#4daafc');
+
+			let svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + W + ' ' + H + '" width="' + W + '" height="' + H + '" font-family="' + fontFamily + '">';
+			svg += '<rect x="0" y="0" width="' + W + '" height="' + H + '" fill="' + bg + '" />';
 			svg += '<defs><marker id="arrow-export" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">' +
-				'<path d="M0,0 L10,5 L0,10 z" fill="#1f9d8c" /></marker></defs>';
+				'<path d="M0,0 L10,5 L0,10 z" fill="' + accentDim + '" /></marker></defs>';
 
 			for (const edge of currentEdges) {
 				const a = blocksByKey.get(edge.from);
@@ -412,37 +435,44 @@ export function getWebviewHtml(webview: vscode.Webview): string {
 				const c1x = p.x1 + (mx - p.x1) * 0.6;
 				const c2x = p.x2 - (p.x2 - mx) * 0.6;
 				const path = 'M ' + p.x1 + ' ' + p.y1 + ' C ' + c1x + ' ' + p.y1 + ', ' + c2x + ' ' + p.y2 + ', ' + p.x2 + ' ' + p.y2;
-				svg += '<path d="' + path + '" fill="none" stroke="#1f9d8c" stroke-width="1.6" marker-end="url(#arrow-export)" opacity="0.85" />';
+				svg += '<path d="' + path + '" fill="none" stroke="' + accentDim + '" stroke-width="1.6" marker-end="url(#arrow-export)" opacity="0.85" />';
 				if (edge.label) {
 					const lx = (p.x1 + p.x2) / 2;
 					const ly = (p.y1 + p.y2) / 2;
 					const w = Math.min(220, edge.label.length * 6 + 12);
-					svg += '<rect x="' + (lx - w / 2) + '" y="' + (ly - 9) + '" width="' + w + '" height="16" rx="4" fill="#0f201f" opacity="0.9" />';
-					svg += '<text x="' + lx + '" y="' + (ly + 3) + '" text-anchor="middle" font-size="10.5" fill="#8fb8b2">' + escapeHtml(edge.label) + '</text>';
+					svg += '<rect x="' + (lx - w / 2) + '" y="' + (ly - 9) + '" width="' + w + '" height="16" rx="4" fill="' + panel + '" opacity="0.9" />';
+					svg += '<text x="' + lx + '" y="' + (ly + 3) + '" text-anchor="middle" font-size="10.5" fill="' + textDim + '">' + escapeHtml(edge.label) + '</text>';
 				}
 			}
 
 			for (const block of blocksByKey.values()) {
 				const title = block.messages[0] ? block.messages[0].text : block.id;
 				const bodyMessages = block.messages.slice(1);
+				const hasBody = bodyMessages.length > 0;
 
 				svg += '<g>';
-				svg += '<rect x="' + block.x + '" y="' + block.y + '" width="' + block.width + '" height="' + block.height + '" rx="8" fill="#123634" stroke="#1f5854" />';
-				svg += '<path d="M ' + block.x + ' ' + (block.y + 20) + ' L ' + block.x + ' ' + (block.y + 8) +
-					' Q ' + block.x + ' ' + block.y + ' ' + (block.x + 8) + ' ' + block.y +
-					' L ' + (block.x + block.width - 8) + ' ' + block.y +
-					' Q ' + (block.x + block.width) + ' ' + block.y + ' ' + (block.x + block.width) + ' ' + (block.y + 8) +
-					' L ' + (block.x + block.width) + ' ' + (block.y + 20) + ' Z" fill="#17423f" />';
-				svg += '<line x1="' + block.x + '" y1="' + (block.y + 28) + '" x2="' + (block.x + block.width) + '" y2="' + (block.y + 28) + '" stroke="#1f5854" />';
-				svg += '<text x="' + (block.x + 10) + '" y="' + (block.y + 18) + '" font-size="12.5" font-weight="600" fill="#dff7f2">' + escapeHtml(title) + '</text>';
+				svg += '<rect x="' + block.x + '" y="' + block.y + '" width="' + block.width + '" height="' + block.height + '" rx="8" fill="' + nodeBg + '" stroke="' + border + '" />';
+				if (hasBody) {
+					svg += '<path d="M ' + block.x + ' ' + (block.y + 20) + ' L ' + block.x + ' ' + (block.y + 8) +
+						' Q ' + block.x + ' ' + block.y + ' ' + (block.x + 8) + ' ' + block.y +
+						' L ' + (block.x + block.width - 8) + ' ' + block.y +
+						' Q ' + (block.x + block.width) + ' ' + block.y + ' ' + (block.x + block.width) + ' ' + (block.y + 8) +
+						' L ' + (block.x + block.width) + ' ' + (block.y + 20) + ' Z" fill="' + nodeHeader + '" />';
+					svg += '<line x1="' + block.x + '" y1="' + (block.y + 28) + '" x2="' + (block.x + block.width) + '" y2="' + (block.y + 28) + '" stroke="' + border + '" />';
+				} else {
+					svg += '<rect x="' + block.x + '" y="' + block.y + '" width="' + block.width + '" height="' + block.height + '" rx="8" fill="' + nodeHeader + '" />';
+				}
+				svg += '<text x="' + (block.x + 10) + '" y="' + (block.y + 18) + '" font-size="12.5" font-weight="600" fill="' + text + '">' + escapeHtml(title) + '</text>';
 
-				let ty = block.y + 28 + 16;
-				for (const message of bodyMessages) {
-					svg += '<text x="' + (block.x + 10) + '" y="' + ty + '" font-size="11.5" font-weight="600" fill="#dff7f2">' + escapeHtml(message.text) + '</text>';
-					ty += 18;
-					for (const comment of message.comments) {
-						svg += '<text x="' + (block.x + 18) + '" y="' + ty + '" font-size="11.5" fill="#8fb8b2">– ' + escapeHtml(comment) + '</text>';
+				if (hasBody) {
+					let ty = block.y + 28 + 16;
+					for (const message of bodyMessages) {
+						svg += '<text x="' + (block.x + 10) + '" y="' + ty + '" font-size="11.5" font-weight="600" fill="' + text + '">' + escapeHtml(message.text) + '</text>';
 						ty += 18;
+						for (const comment of message.comments) {
+							svg += '<text x="' + (block.x + 18) + '" y="' + ty + '" font-size="11.5" fill="' + textDim + '">– ' + escapeHtml(comment) + '</text>';
+							ty += 18;
+						}
 					}
 				}
 				svg += '</g>';
