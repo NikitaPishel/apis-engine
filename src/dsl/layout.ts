@@ -1,5 +1,5 @@
 import * as dagre from 'dagre';
-import { DiagramModel, PositionedDiagram, PositionedEdge, PositionedNode } from './model';
+import { Block, ParsedDiagram, PositionedBlock, PositionedDiagram, PositionedEdge } from './model';
 
 const LINE_HEIGHT = 18;
 const HEADER_HEIGHT = 34;
@@ -9,55 +9,59 @@ const MAX_WIDTH = 420;
 const CHAR_WIDTH = 7;
 const HORIZONTAL_PADDING = 44;
 
-function estimateSize(node: DiagramModel['nodes'][number]): { width: number; height: number } {
-	const title = node.fields[0]?.title ?? node.id;
-	const bodyFields = node.fields.slice(1);
+function estimateSize(block: Block): { width: number; height: number } {
+	const title = block.messages[0]?.text ?? block.id;
+	const bodyMessages = block.messages.slice(1);
 
 	let lineCount = 0;
 	const lineLengths: number[] = [title.length];
 
-	for (const field of bodyFields) {
+	for (const message of bodyMessages) {
 		lineCount += 1;
-		lineLengths.push(field.title.length);
-		for (const item of field.items) {
+		lineLengths.push(message.text.length);
+		for (const comment of message.comments) {
 			lineCount += 1;
-			lineLengths.push(item.length + 2);
+			lineLengths.push(comment.length + 2);
 		}
 	}
 
 	const maxLen = Math.max(...lineLengths, 10);
 	const width = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, maxLen * CHAR_WIDTH + HORIZONTAL_PADDING));
-	const height = HEADER_HEIGHT + VERTICAL_PADDING + Math.max(lineCount, 0) * LINE_HEIGHT + (lineCount === 0 ? 8 : 0);
 
+	if (bodyMessages.length === 0) {
+		return { width, height: HEADER_HEIGHT };
+	}
+
+	const height = HEADER_HEIGHT + VERTICAL_PADDING + lineCount * LINE_HEIGHT;
 	return { width, height };
 }
 
-export function layoutDiagram(model: DiagramModel): PositionedDiagram {
+export function layoutDiagram(diagram: ParsedDiagram): PositionedDiagram {
 	const g = new dagre.graphlib.Graph();
 	g.setGraph({ rankdir: 'LR', nodesep: 48, ranksep: 90, marginx: 40, marginy: 40 });
 	g.setDefaultEdgeLabel(() => ({}));
 
-	const knownIds = new Set(model.nodes.map((n) => n.id));
+	const knownKeys = new Set(diagram.blocks.map((b) => b.key));
 	const sizes = new Map<string, { width: number; height: number }>();
 
-	for (const node of model.nodes) {
-		const size = estimateSize(node);
-		sizes.set(node.id, size);
-		g.setNode(node.id, size);
+	for (const block of diagram.blocks) {
+		const size = estimateSize(block);
+		sizes.set(block.key, size);
+		g.setNode(block.key, size);
 	}
 
-	const validEdges = model.edges.filter((e) => knownIds.has(e.from) && knownIds.has(e.to));
+	const validEdges = diagram.edges.filter((e) => knownKeys.has(e.from) && knownKeys.has(e.to));
 	for (const edge of validEdges) {
 		g.setEdge(edge.from, edge.to);
 	}
 
 	dagre.layout(g);
 
-	const positionedNodes: PositionedNode[] = model.nodes.map((node) => {
-		const gNode = g.node(node.id);
-		const size = sizes.get(node.id)!;
+	const positionedBlocks: PositionedBlock[] = diagram.blocks.map((block) => {
+		const gNode = g.node(block.key);
+		const size = sizes.get(block.key)!;
 		return {
-			...node,
+			...block,
 			x: gNode ? gNode.x - size.width / 2 : 0,
 			y: gNode ? gNode.y - size.height / 2 : 0,
 			width: size.width,
@@ -73,13 +77,15 @@ export function layoutDiagram(model: DiagramModel): PositionedDiagram {
 
 	let maxX = 0;
 	let maxY = 0;
-	for (const n of positionedNodes) {
-		maxX = Math.max(maxX, n.x + n.width);
-		maxY = Math.max(maxY, n.y + n.height);
+	for (const b of positionedBlocks) {
+		maxX = Math.max(maxX, b.x + b.width);
+		maxY = Math.max(maxY, b.y + b.height);
 	}
 
 	return {
-		nodes: positionedNodes,
+		type: diagram.type,
+		title: diagram.title,
+		blocks: positionedBlocks,
 		edges: positionedEdges,
 		width: maxX + 60,
 		height: maxY + 60,
