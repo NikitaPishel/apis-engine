@@ -51,24 +51,24 @@ then a separate `(ID)` inside it:
 
 ```
 [Start]
-- проснулся
-- встал с кровати
+- Morning Routine
+- Prepare for the day
 
 (Start) -> [B1]
-- Почистить зубы
-- умыться
+- Brush teeth
+- Take a shower
 
 (Start) -> [B2]
-- Заварить чай
-- насыпать бублики
+- Make coffee
+- Eat breakfast
 
 (Start) -> [B3]
-- Use the bathroom
-
+- Review calendar
+- Check email
 
 (B3) -> [B4]
-- помыть руки
-
+- Start work
+- Begin first task
 ```
 
 `Start` branches into `B1`, `B2`, `B3`; `B3` continues into `B4`. Both forms
